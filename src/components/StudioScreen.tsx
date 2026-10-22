@@ -330,9 +330,6 @@ export default function StudioScreen({
         setToast("Fabric kept in Your prints");
       }}
       onKeepColour={keepCameraColour}
-      scale={look.scale}
-      onScale={(v) => set({ scale: v }, false)}
-      onScaleCommit={commit}
     />
   );
   const adjust = (

@@ -75,7 +75,10 @@ readback) for automated testing.
    shirt, once and centred — no mirroring, relighting or invented repeats
    (it only repeats if you shrink **Print size** below 1×). The shirt's own
    folds and shadows are kept. *Colour* mode uses the cloth's average colour.
-   **Keep** saves it to Your prints / Any colour.
+   **Keep** saves it to Your prints / Any colour. For close-ups (~10 cm) the
+   app prefers Safari's auto-switching multi-lens camera ("Auto (close-up)",
+   which can switch to macro on supported iPhones) and offers a lens picker
+   and a 1–4× zoom; the preview always matches what goes on the shirt.
 
 Patterns (`src/lib/patterns.ts`) are drawn procedurally into seamless 512 px
 tiles: 8 solids + any colour, stripes, checks & plaid, geometric, floral,

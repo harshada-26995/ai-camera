@@ -31,12 +31,15 @@ export class FabricScanner {
     this.avgCtx = avgCtx;
   }
 
-  /** Copies the centre square of the current frame. Returns false when no frame is available yet. */
-  update(video: HTMLVideoElement, mode: FabricMode): boolean {
+  /**
+   * Copies the centre square of the current frame, zoomed in by `zoom` (the
+   * same crop the preview shows). Returns false when no frame is available yet.
+   */
+  update(video: HTMLVideoElement, mode: FabricMode, zoom = 1): boolean {
     const vw = video.videoWidth;
     const vh = video.videoHeight;
     if (!vw || !vh || video.readyState < 2) return false;
-    const side = Math.min(vw, vh);
+    const side = Math.min(vw, vh) / Math.max(1, zoom);
     const sx = (vw - side) / 2;
     const sy = (vh - side) / 2;
 

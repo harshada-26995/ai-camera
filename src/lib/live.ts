@@ -37,7 +37,14 @@ const WARMUP_RUNS = 2;
 
 export class CameraError extends Error {}
 
-export async function openCamera(facing: Facing): Promise<MediaStream> {
+export interface CameraOptions {
+  /** A specific camera (lens); falls back to `facing` if it can't be opened. */
+  deviceId?: string | null;
+  width?: number;
+  height?: number;
+}
+
+export async function openCamera(facing: Facing, options: CameraOptions = {}): Promise<MediaStream> {
   if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
     throw new CameraError(
       window.isSecureContext
@@ -45,11 +52,18 @@ export async function openCamera(facing: Facing): Promise<MediaStream> {
         : "The live camera needs a secure (https) link. Open the site with https:// and try again.",
     );
   }
+  const size = { width: { ideal: options.width ?? 1280 }, height: { ideal: options.height ?? 720 } };
+  const request = (video: MediaTrackConstraints) => navigator.mediaDevices.getUserMedia({ audio: false, video });
   try {
-    return await navigator.mediaDevices.getUserMedia({
-      audio: false,
-      video: { facingMode: { ideal: facing }, width: { ideal: 1280 }, height: { ideal: 720 } },
-    });
+    if (options.deviceId) {
+      try {
+        return await request({ deviceId: { exact: options.deviceId }, ...size });
+      } catch (e) {
+        if ((e as DOMException).name === "NotAllowedError") throw e;
+        // That lens isn't available any more; use the default camera instead.
+      }
+    }
+    return await request({ facingMode: { ideal: facing }, ...size });
   } catch (e) {
     const name = (e as DOMException).name;
     if (name === "NotAllowedError" || name === "SecurityError") {
@@ -59,6 +73,40 @@ export async function openCamera(facing: Facing): Promise<MediaStream> {
     if (name === "NotReadableError") throw new CameraError("The camera is being used by another app. Close it and try again.");
     throw new CameraError("The camera couldn't be started.");
   }
+}
+
+export interface Lens {
+  deviceId: string;
+  label: string;
+  /** Higher is better for close-ups (auto-switching multi-lens cameras first). */
+  closeUpRank: number;
+}
+
+/**
+ * Back cameras with friendly names. Labels are only available once camera
+ * permission has been granted. On iPhone, Safari lists the multi-lens
+ * "Triple"/"Dual Wide" cameras, which switch lenses automatically (including
+ * macro on supported models) like the Camera app.
+ */
+export async function listBackLenses(): Promise<Lens[]> {
+  if (!navigator.mediaDevices?.enumerateDevices) return [];
+  const devices = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === "videoinput" && d.deviceId);
+  const named = (label: string): { label: string; rank: number } | null => {
+    const l = label.toLowerCase();
+    if (/front|user|facetime/.test(l)) return null;
+    if (l.includes("triple")) return { label: "Auto (close-up)", rank: 5 };
+    if (l.includes("dual wide")) return { label: "Auto (close-up)", rank: 4 };
+    if (l.includes("ultra wide")) return { label: "Ultra wide", rank: 3 };
+    if (l.includes("dual")) return { label: "Auto", rank: 2 };
+    if (l.includes("telephoto")) return { label: "Telephoto", rank: 0 };
+    return { label: /^back camera$/i.test(label.trim()) ? "Main" : label || "Camera", rank: 1 };
+  };
+  const lenses: Lens[] = [];
+  for (const d of devices) {
+    const n = named(d.label);
+    if (n && !lenses.some((x) => x.label === n.label)) lenses.push({ deviceId: d.deviceId, label: n.label, closeUpRank: n.rank });
+  }
+  return lenses.sort((a, b) => b.closeUpRank - a.closeUpRank);
 }
 
 export function stopStream(stream: MediaStream | null): void {
