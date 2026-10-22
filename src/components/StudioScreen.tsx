@@ -317,7 +317,10 @@ export default function StudioScreen({
       onCustomColor={onCustomColor}
       onAddPrint={() => setShowAddPrint(true)}
       onRemovePrint={removePrint}
-      onCamera={() => setFabricCam(true)}
+      onCamera={() => {
+        viewportRef.current?.reset();
+        setFabricCam(true);
+      }}
     />
   );
   const cameraPanel = fabricCam && (
@@ -330,6 +333,7 @@ export default function StudioScreen({
         setToast("Fabric kept in Your prints");
       }}
       onKeepColour={keepCameraColour}
+      compact={!desktop}
     />
   );
   const adjust = (
@@ -409,7 +413,7 @@ export default function StudioScreen({
             />
           </div>
 
-          <div className="absolute inset-x-0 bottom-3 flex justify-center px-3">
+          <div className={cx("absolute inset-x-0 bottom-3 flex justify-center px-3", fabricCam && !desktop && "hidden")}>
             <div className="flex items-center gap-0.5 rounded-full border border-line bg-paper/95 p-1 shadow-[0_10px_30px_-12px_rgba(40,30,20,0.35)] backdrop-blur">
               <IconButton label="Compare before and after" active={compare} onClick={() => setCompare((c) => !c)}>
                 <IconCompare size={18} />

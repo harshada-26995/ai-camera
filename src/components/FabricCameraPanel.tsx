@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { FabricScanner, type FabricMode } from "@/lib/fabricCamera";
 import { CameraError, listBackLenses, openCamera, stopStream, type Lens } from "@/lib/live";
 import { IconClose } from "./icons";
@@ -34,7 +35,13 @@ export default function FabricCameraPanel({
   onKeepPrint,
   onKeepColour,
   onClose,
+  compact = false,
 }: {
+  /**
+   * Phone layout: the camera view floats as a small thumbnail over the page and
+   * the controls fit in a slim bar, so the photo of him stays fully visible.
+   */
+  compact?: boolean;
   /** Receives the live image every frame, and null when the camera closes. */
   onFrame: (tile: HTMLCanvasElement | null) => void;
   onKeepPrint: (tile: HTMLCanvasElement) => void;
@@ -50,6 +57,8 @@ export default function FabricCameraPanel({
   const [lenses, setLenses] = useState<Lens[]>([]);
   const [deviceId, setDeviceId] = useState<string | null>(readSavedLens);
   const [activeLens, setActiveLens] = useState<string | null>(null);
+  /** Where the floating camera thumbnail sits in the phone layout; tap it to move it out of the way. */
+  const [thumbAtBottom, setThumbAtBottom] = useState(false);
   const live = useRef({ mode, zoom, onFrame });
   useEffect(() => {
     live.current = { mode, zoom, onFrame };
@@ -132,6 +141,112 @@ export default function FabricCameraPanel({
   const error = typeof state === "object" ? state.error : null;
   const selectedLens = activeLens ?? deviceId;
 
+  const pickLens = (id: string) => {
+    if (id === selectedLens) return;
+    saveLens(id);
+    setState("starting");
+    setDeviceId(id);
+  };
+
+  const cameraView = (
+    <>
+      {/* Scaled like the crop, so the preview is exactly what goes on the shirt. */}
+      <video
+        ref={videoRef}
+        playsInline
+        muted
+        autoPlay
+        className="h-full w-full object-cover"
+        style={{ transform: `scale(${zoom})` }}
+        aria-label="Camera view of the fabric"
+      />
+      {state === "starting" && (
+        <div className="absolute inset-0 flex items-center justify-center text-white">
+          <Spinner />
+        </div>
+      )}
+    </>
+  );
+
+  const modeSwitch = (
+    <Segmented<FabricMode>
+      label="Use the fabric's"
+      size="sm"
+      value={mode}
+      onChange={setMode}
+      options={[
+        { value: "print", label: "Print" },
+        { value: "colour", label: "Colour" },
+      ]}
+    />
+  );
+
+  const zoomSlider = <Slider label="Zoom" value={zoom} min={1} max={4} format={(v) => `${v.toFixed(1)}×`} onChange={setZoom} />;
+
+  const keepButton = (
+    <Button className="h-11 flex-1" disabled={state !== "live"} onClick={keep}>
+      {mode === "colour" && <span className="h-4 w-4 rounded-full border border-paper/60" style={{ background: swatch }} />}
+      {mode === "colour" ? "Keep this colour" : "Keep this fabric"}
+    </Button>
+  );
+
+  const errorText = error && (
+    <p role="alert" className="text-[0.8125rem] leading-snug text-danger">
+      {error}
+    </p>
+  );
+
+  if (compact) {
+    return (
+      <div className="space-y-2">
+        {typeof document !== "undefined" &&
+          createPortal(
+            <button
+              type="button"
+              aria-label={thumbAtBottom ? "Move camera view to the top" : "Move camera view to the bottom"}
+              title="Tap to move"
+              onClick={() => setThumbAtBottom((b) => !b)}
+              className={cx(
+                "fixed right-3 z-30 h-[108px] w-[108px] overflow-hidden rounded-2xl border-2 border-white bg-[#0d0c0b] shadow-[0_10px_30px_-10px_rgba(0,0,0,0.5)]",
+                thumbAtBottom ? "bottom-[calc(8.75rem+env(safe-area-inset-bottom))]" : "top-[calc(4.25rem+env(safe-area-inset-top))]",
+              )}
+            >
+              {cameraView}
+            </button>,
+            document.body,
+          )}
+        <div className="flex items-end gap-3">
+          <div className="shrink-0 pb-0.5">{modeSwitch}</div>
+          <div className="min-w-0 flex-1">{zoomSlider}</div>
+        </div>
+        {errorText}
+        <div className="flex items-center gap-2">
+          {lenses.length > 1 && (
+            <label className="relative shrink-0">
+              <span className="sr-only">Camera lens</span>
+              <select
+                value={selectedLens ?? ""}
+                onChange={(e) => pickLens(e.target.value)}
+                className="h-11 max-w-[8.5rem] appearance-none truncate rounded-full border border-line-strong bg-paper pl-3.5 pr-7 text-[0.8125rem] font-medium"
+              >
+                {lenses.map((l) => (
+                  <option key={l.deviceId} value={l.deviceId}>
+                    {l.label}
+                  </option>
+                ))}
+              </select>
+              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[0.6rem] text-muted">▼</span>
+            </label>
+          )}
+          {keepButton}
+          <button type="button" aria-label="Close camera" onClick={onClose} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-line-strong">
+            <IconClose size={18} />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
       <div className="flex items-start justify-between gap-2">
@@ -147,41 +262,10 @@ export default function FabricCameraPanel({
       </div>
 
       <div className="mt-3 flex gap-3">
-        <div className="relative aspect-square w-[124px] shrink-0 overflow-hidden rounded-2xl bg-[#0d0c0b] md:w-[150px]">
-          {/* Scaled like the crop, so the preview is exactly what goes on the shirt. */}
-          <video
-            ref={videoRef}
-            playsInline
-            muted
-            autoPlay
-            className="h-full w-full object-cover"
-            style={{ transform: `scale(${zoom})` }}
-            aria-label="Camera view of the fabric"
-          />
-          {state === "starting" && (
-            <div className="absolute inset-0 flex items-center justify-center text-white">
-              <Spinner />
-            </div>
-          )}
-        </div>
+        <div className="relative aspect-square w-[150px] shrink-0 overflow-hidden rounded-2xl bg-[#0d0c0b]">{cameraView}</div>
         <div className="min-w-0 flex-1 space-y-1.5">
-          <Segmented<FabricMode>
-            label="Use the fabric's"
-            size="sm"
-            value={mode}
-            onChange={setMode}
-            options={[
-              { value: "print", label: "Print" },
-              { value: "colour", label: "Colour" },
-            ]}
-          />
-          <Slider label="Zoom" value={zoom} min={1} max={4} format={(v) => `${v.toFixed(1)}×`} onChange={setZoom} />
-          {mode === "colour" && (
-            <div className="flex items-center gap-2">
-              <span className="h-6 w-6 rounded-full border border-line" style={{ background: swatch }} />
-              <span className="font-mono text-[0.75rem] text-muted">{swatch.toUpperCase()}</span>
-            </div>
-          )}
+          {modeSwitch}
+          {zoomSlider}
         </div>
       </div>
 
@@ -194,12 +278,7 @@ export default function FabricCameraPanel({
               type="button"
               role="radio"
               aria-checked={selectedLens === l.deviceId}
-              onClick={() => {
-                if (l.deviceId === selectedLens) return;
-                saveLens(l.deviceId);
-                setState("starting");
-                setDeviceId(l.deviceId);
-              }}
+              onClick={() => pickLens(l.deviceId)}
               className={cx(
                 "h-8 shrink-0 rounded-full border px-3 text-[0.75rem] font-medium transition-colors",
                 selectedLens === l.deviceId ? "border-ink bg-ink text-paper" : "border-line text-ink-soft hover:border-ink",
@@ -211,15 +290,7 @@ export default function FabricCameraPanel({
         </div>
       )}
 
-      {error ? (
-        <p role="alert" className="mt-3 text-[0.8125rem] leading-snug text-danger">
-          {error}
-        </p>
-      ) : (
-        <Button className="mt-3 h-11 w-full" disabled={state !== "live"} onClick={keep}>
-          {mode === "colour" ? "Keep this colour" : "Keep this fabric"}
-        </Button>
-      )}
+      <div className="mt-3 flex">{error ? errorText : keepButton}</div>
     </div>
   );
 }
