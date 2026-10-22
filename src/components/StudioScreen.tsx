@@ -9,7 +9,7 @@ import { TryOnRenderer, WebGLUnavailableError } from "@/lib/renderer";
 import AdjustPanel from "./AdjustPanel";
 import CustomPrintDialog from "./CustomPrintDialog";
 import FabricCameraPanel from "./FabricCameraPanel";
-import { LIVE_FABRIC_KEY, LIVE_FABRIC_TILE_FRACTION } from "@/lib/fabricCamera";
+import { LIVE_FABRIC_KEY } from "@/lib/fabricCamera";
 import PatternPicker from "./PatternPicker";
 import { useMediaQuery } from "./useMediaQuery";
 import Viewport, { type DrawEvent, type ViewportHandle } from "./Viewport";
@@ -78,9 +78,9 @@ export default function StudioScreen({
     const r = rendererRef.current;
     if (!r) return;
     if (liveFabric.current) {
-      r.updatePattern({ key: LIVE_FABRIC_KEY, canvas: liveFabric.current, tileFraction: LIVE_FABRIC_TILE_FRACTION });
+      r.updatePattern({ key: LIVE_FABRIC_KEY, canvas: liveFabric.current, tileFraction: 1, cover: true });
     } else {
-      r.setPattern({ key: tileKey(current), canvas: getTile(current), tileFraction: current.tileFraction });
+      r.setPattern({ key: tileKey(current), canvas: getTile(current), tileFraction: current.tileFraction, cover: current.cover });
     }
     r.render(look, { showOriginal, split: compare ? split : null });
   }, [current, look, showOriginal, compare, split]);
@@ -203,7 +203,7 @@ export default function StudioScreen({
     if (e.phase === "start") {
       drag.current = { x: e.x, y: e.y };
     } else if (e.phase === "move" && drag.current) {
-      const d = r.dragToOffset(e.x - drag.current.x, e.y - drag.current.y, look, fabricCam ? LIVE_FABRIC_TILE_FRACTION : current.tileFraction);
+      const d = r.dragToOffset(e.x - drag.current.x, e.y - drag.current.y, look, fabricCam ? { tileFraction: 1, cover: true } : current);
       drag.current = { x: e.x, y: e.y };
       const wrap = (v: number) => ((((v + 0.5) % 1) + 1) % 1) - 0.5;
       set({ offsetX: wrap(look.offsetX + d.x), offsetY: wrap(look.offsetY + d.y) }, false);
@@ -249,8 +249,8 @@ export default function StudioScreen({
     }
   };
 
-  const addPrint = (tile: HTMLCanvasElement, name: string, tileFraction = 0.35) => {
-    const def: PatternDef = { id: `custom-${Date.now()}`, name, category: "custom", tileFraction, base: "#ddd", canvas: tile };
+  const addPrint = (tile: HTMLCanvasElement, name: string, cover = false) => {
+    const def: PatternDef = { id: `custom-${Date.now()}`, name, category: "custom", tileFraction: 0.35, base: "#ddd", canvas: tile, cover };
     onCustomPatterns([...customPatterns, def]);
     setShowAddPrint(false);
     setCategory("custom");
@@ -326,7 +326,7 @@ export default function StudioScreen({
       onClose={() => setFabricCam(false)}
       onKeepPrint={(tile) => {
         setFabricCam(false);
-        addPrint(tile, `Camera fabric ${customPatterns.filter((p) => p.name.startsWith("Camera fabric")).length + 1}`, LIVE_FABRIC_TILE_FRACTION);
+        addPrint(tile, `Camera fabric ${customPatterns.filter((p) => p.name.startsWith("Camera fabric")).length + 1}`, true);
         setToast("Fabric kept in Your prints");
       }}
       onKeepColour={keepCameraColour}

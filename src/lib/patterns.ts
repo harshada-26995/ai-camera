@@ -28,6 +28,8 @@ export interface PatternDef {
   draw?: (ctx: CanvasRenderingContext2D, S: number) => void;
   /** Pre-rendered tile (custom uploads). */
   canvas?: HTMLCanvasElement;
+  /** Shown once across the whole shirt rather than tiled (fabric captured with the camera). */
+  cover?: boolean;
 }
 
 export const TILE = 512;

@@ -6,9 +6,6 @@ import { CameraError, openCamera, stopStream } from "@/lib/live";
 import { IconClose } from "./icons";
 import { Button, Segmented, Slider, Spinner } from "./ui";
 
-/** Share of the camera frame's short side sampled as the fabric (matches the on-screen guide). */
-const CROP_FRACTION = 0.6;
-
 type VideoWithFrameCallback = HTMLVideoElement & {
   requestVideoFrameCallback?: (cb: () => void) => number;
   cancelVideoFrameCallback?: (id: number) => void;
@@ -61,7 +58,7 @@ export default function FabricCameraPanel({
     };
     const tick = () => {
       if (cancelled) return;
-      if (scanner.update(video, modeRef.current, CROP_FRACTION, true)) {
+      if (scanner.update(video, modeRef.current)) {
         onFrameRef.current(scanner.tile);
         const now = performance.now();
         if (now - lastSwatch > 300) {
@@ -112,7 +109,9 @@ export default function FabricCameraPanel({
       <div className="flex items-start justify-between gap-2">
         <div>
           <p className="tag text-muted">Fabric from camera</p>
-          <p className="mt-0.5 text-[0.8125rem] leading-snug text-ink-soft">Hold the phone close and fill the square with the cloth.</p>
+          <p className="mt-0.5 text-[0.8125rem] leading-snug text-ink-soft">
+            Whatever is in the square is what he wears. Hold the phone 20–30 cm away so it can focus.
+          </p>
         </div>
         <button type="button" aria-label="Close camera" onClick={onClose} className="-mr-2 -mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full hover:bg-sand">
           <IconClose size={18} />
@@ -122,8 +121,6 @@ export default function FabricCameraPanel({
       <div className="mt-3 flex gap-3">
         <div className="relative aspect-square w-[124px] shrink-0 overflow-hidden rounded-2xl bg-[#0d0c0b] md:w-[150px]">
           <video ref={videoRef} playsInline muted autoPlay className="h-full w-full object-cover" aria-label="Camera view of the fabric" />
-          {/* The sampled area (centre 60% of the short side). */}
-          <div className="pointer-events-none absolute inset-[20%] rounded-md border-2 border-white/90 shadow-[0_0_0_999px_rgba(0,0,0,0.28)]" />
           {state === "starting" && (
             <div className="absolute inset-0 flex items-center justify-center text-white">
               <Spinner />

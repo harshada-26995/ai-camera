@@ -109,11 +109,16 @@ export interface RenderOptions {
   split: number | null;
 }
 
-/** Natural tile size, as a fraction of the shirt's width, at scale 1. */
 export interface PatternSource {
   key: string;
   canvas: HTMLCanvasElement;
+  /** Natural tile size, as a fraction of the shirt's width, at scale 1. */
   tileFraction: number;
+  /**
+   * Show the image once across the whole shirt, centred (no visible repeat at
+   * scale 1), instead of tiling it. Used for fabric photographed with the camera.
+   */
+  cover?: boolean;
 }
 
 const TEXTURE_CACHE_LIMIT = 12;
@@ -134,6 +139,7 @@ export class TryOnRenderer {
   private height = 0;
   private meanLum = 0.5;
   private shirtWidth = 1;
+  private shirtHeight = 1;
   private shirtCenter: [number, number] = [0, 0];
   private photoData: ImageData | null = null;
   private maskData: Uint8Array | null = null;
@@ -295,6 +301,7 @@ export class TryOnRenderer {
 
     const b = maskBounds(mask, this.width, this.height);
     this.shirtWidth = b ? Math.max(b.w, this.width * 0.1) : this.width * 0.5;
+    this.shirtHeight = b ? Math.max(b.h, this.height * 0.1) : this.height * 0.5;
     this.shirtCenter = b ? [b.x + b.w / 2, b.y + b.h / 2] : [this.width / 2, this.height / 2];
   }
 
@@ -334,6 +341,7 @@ export class TryOnRenderer {
     meanLum: number,
     shirtCenter: [number, number],
     shirtWidth: number,
+    shirtHeight = shirtWidth,
   ): void {
     const gl = this.gl;
     const upload = (tex: WebGLTexture | null, unit: number, data: Uint8Array, w: number, h: number) => {
@@ -348,6 +356,7 @@ export class TryOnRenderer {
     this.meanLum = meanLum;
     this.shirtCenter = shirtCenter;
     this.shirtWidth = Math.max(shirtWidth, this.width * 0.1);
+    this.shirtHeight = Math.max(shirtHeight, this.height * 0.1);
   }
 
   /** Makes a pattern current, uploading it only the first time (LRU cache). */
@@ -395,8 +404,14 @@ export class TryOnRenderer {
   }
 
   /** Converts a drag in image pixels to a pattern offset delta (tile units), honouring rotation. */
-  dragToOffset(dx: number, dy: number, look: LookSettings, tileFraction: number): { x: number; y: number } {
-    const tile = this.shirtWidth * tileFraction * look.scale;
+  /** Pattern tile size in photo pixels. */
+  private tileSize(pattern: Pick<PatternSource, "tileFraction" | "cover">, scale: number): number {
+    const natural = pattern.cover ? Math.max(this.shirtWidth, this.shirtHeight) : this.shirtWidth * pattern.tileFraction;
+    return Math.max(4, natural * scale);
+  }
+
+  dragToOffset(dx: number, dy: number, look: LookSettings, pattern: Pick<PatternSource, "tileFraction" | "cover">): { x: number; y: number } {
+    const tile = this.tileSize(pattern, look.scale);
     const a = (look.rotation * Math.PI) / 180;
     const c = Math.cos(a);
     const s = Math.sin(a);
@@ -423,9 +438,11 @@ export class TryOnRenderer {
     gl.uniform2f(this.u("uSize"), this.width, this.height);
     gl.uniform2f(this.u("uCenter"), this.shirtCenter[0], this.shirtCenter[1]);
     gl.uniform1f(this.u("uMeanLum"), this.meanLum);
-    gl.uniform1f(this.u("uTile"), Math.max(4, this.shirtWidth * pattern.tileFraction * look.scale));
+    gl.uniform1f(this.u("uTile"), this.tileSize(pattern, look.scale));
     gl.uniform2f(this.u("uRot"), Math.cos(angle), Math.sin(angle));
-    gl.uniform2f(this.u("uOffset"), look.offsetX, look.offsetY);
+    // Cover patterns put the image's centre (not its corner) on the shirt's centre.
+    const centre = pattern.cover ? 0.5 : 0;
+    gl.uniform2f(this.u("uOffset"), look.offsetX + centre, look.offsetY + centre);
     gl.uniform1f(this.u("uIntensity"), look.intensity);
     gl.uniform1f(this.u("uShading"), look.shading);
     gl.uniform1f(this.u("uDetail"), look.detail);

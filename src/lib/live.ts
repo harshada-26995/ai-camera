@@ -89,6 +89,7 @@ export class LiveTryOn {
   private prevMask: Float32Array | null = null;
   private center: [number, number] | null = null;
   private shirtWidth = 0;
+  private shirtHeight = 0;
   private raf = 0;
   private running = false;
   private analyses = 0;
@@ -256,15 +257,29 @@ export class LiveTryOn {
       const cx = ((b.x + b.w / 2) / lw) * W;
       const cy = ((b.y + b.h / 2) / lh) * H;
       const bw2 = (b.w / lw) * W;
+      const bh2 = (b.h / lh) * H;
       if (!this.center) {
         this.center = [cx, cy];
         this.shirtWidth = bw2;
+        this.shirtHeight = bh2;
       } else {
         this.center = [this.center[0] * 0.8 + cx * 0.2, this.center[1] * 0.8 + cy * 0.2];
         this.shirtWidth = this.shirtWidth * 0.9 + bw2 * 0.1;
+        this.shirtHeight = this.shirtHeight * 0.9 + bh2 * 0.1;
       }
     }
-    this.renderer.setLiveMask(mask, lw, lh, coarse, lw, lh, meanLum, this.center ?? [W / 2, H / 2], this.shirtWidth || W * 0.5);
+    this.renderer.setLiveMask(
+      mask,
+      lw,
+      lh,
+      coarse,
+      lw,
+      lh,
+      meanLum,
+      this.center ?? [W / 2, H / 2],
+      this.shirtWidth || W * 0.5,
+      this.shirtHeight || H * 0.5,
+    );
 
     const end = performance.now();
     // The first runs include one-off GPU shader compilation; don't let them skew the budget.

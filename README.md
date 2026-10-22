@@ -71,10 +71,11 @@ readback) for automated testing.
 
 6. **Fabric from camera** (`src/lib/fabricCamera.ts`) — in the studio, tap
    **Camera** and point the phone at any cloth: his photo shows him wearing it
-   live. *Print* mode tiles the centre square of the camera view (lighting
-   evened out, mirrored for a seamless repeat); *Colour* mode uses the cloth's
-   average colour. **Keep** saves it to Your prints / Any colour. No detection
-   runs per frame here, so it is a cheap texture update.
+   live. *Print* mode places exactly what is in the camera square on the
+   shirt, once and centred — no mirroring, relighting or invented repeats
+   (it only repeats if you shrink **Print size** below 1×). The shirt's own
+   folds and shadows are kept. *Colour* mode uses the cloth's average colour.
+   **Keep** saves it to Your prints / Any colour.
 
 Patterns (`src/lib/patterns.ts`) are drawn procedurally into seamless 512 px
 tiles: 8 solids + any colour, stripes, checks & plaid, geometric, floral,
