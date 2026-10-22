@@ -8,6 +8,8 @@ import { CUSTOM_COLOR_ID, PATTERNS, getTile, resolvePattern, tileKey, warmTiles,
 import { TryOnRenderer, WebGLUnavailableError } from "@/lib/renderer";
 import AdjustPanel from "./AdjustPanel";
 import CustomPrintDialog from "./CustomPrintDialog";
+import FabricCameraPanel from "./FabricCameraPanel";
+import { LIVE_FABRIC_KEY, LIVE_FABRIC_TILE_FRACTION } from "@/lib/fabricCamera";
 import PatternPicker from "./PatternPicker";
 import { useMediaQuery } from "./useMediaQuery";
 import Viewport, { type DrawEvent, type ViewportHandle } from "./Viewport";
@@ -57,6 +59,9 @@ export default function StudioScreen({
   const [glError, setGlError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [fabricCam, setFabricCam] = useState(false);
+  /** Latest tile from the camera while "Fabric from camera" is open. */
+  const liveFabric = useRef<HTMLCanvasElement | null>(null);
   const desktop = useMediaQuery("(min-width: 768px)");
 
   const hostRef = useRef<HTMLDivElement>(null);
@@ -72,7 +77,11 @@ export default function StudioScreen({
   const draw = useCallback(() => {
     const r = rendererRef.current;
     if (!r) return;
-    r.setPattern({ key: tileKey(current), canvas: getTile(current), tileFraction: current.tileFraction });
+    if (liveFabric.current) {
+      r.updatePattern({ key: LIVE_FABRIC_KEY, canvas: liveFabric.current, tileFraction: LIVE_FABRIC_TILE_FRACTION });
+    } else {
+      r.setPattern({ key: tileKey(current), canvas: getTile(current), tileFraction: current.tileFraction });
+    }
     r.render(look, { showOriginal, split: compare ? split : null });
   }, [current, look, showOriginal, compare, split]);
 
@@ -175,13 +184,26 @@ export default function StudioScreen({
     [history.present],
   );
 
+  // Each camera frame re-draws his photo with the fabric the camera sees.
+  const onCameraFrame = useCallback((tile: HTMLCanvasElement | null) => {
+    liveFabric.current = tile;
+    drawRef.current();
+  }, []);
+
+  const keepCameraColour = (hex: string) => {
+    setFabricCam(false);
+    setCategory("solids");
+    dispatch({ type: "set", value: { ...look, patternId: CUSTOM_COLOR_ID, customColor: hex }, commit: true });
+    setToast("Colour kept — find it under Solids › Any colour");
+  };
+
   const onDrag = (e: DrawEvent) => {
     const r = rendererRef.current;
     if (!r) return;
     if (e.phase === "start") {
       drag.current = { x: e.x, y: e.y };
     } else if (e.phase === "move" && drag.current) {
-      const d = r.dragToOffset(e.x - drag.current.x, e.y - drag.current.y, look, current.tileFraction);
+      const d = r.dragToOffset(e.x - drag.current.x, e.y - drag.current.y, look, fabricCam ? LIVE_FABRIC_TILE_FRACTION : current.tileFraction);
       drag.current = { x: e.x, y: e.y };
       const wrap = (v: number) => ((((v + 0.5) % 1) + 1) % 1) - 0.5;
       set({ offsetX: wrap(look.offsetX + d.x), offsetY: wrap(look.offsetY + d.y) }, false);
@@ -227,8 +249,8 @@ export default function StudioScreen({
     }
   };
 
-  const addPrint = (tile: HTMLCanvasElement, name: string) => {
-    const def: PatternDef = { id: `custom-${Date.now()}`, name, category: "custom", tileFraction: 0.35, base: "#ddd", canvas: tile };
+  const addPrint = (tile: HTMLCanvasElement, name: string, tileFraction = 0.35) => {
+    const def: PatternDef = { id: `custom-${Date.now()}`, name, category: "custom", tileFraction, base: "#ddd", canvas: tile };
     onCustomPatterns([...customPatterns, def]);
     setShowAddPrint(false);
     setCategory("custom");
@@ -242,7 +264,8 @@ export default function StudioScreen({
     if (look.patternId === id) set({ patternId: PATTERNS[0]!.id }, true);
   };
 
-  const isSolid = current.category === "solids";
+  const isSolid = !fabricCam && current.category === "solids";
+  const wearingName = fabricCam ? "Fabric from camera" : current.name;
   const compareHandle = compare && !showOriginal && (
     <div className="absolute inset-y-0 z-10" style={{ left: `${split * 100}%` }}>
       <div className="absolute inset-y-0 -ml-px w-0.5 bg-paper shadow-[0_0_0_0.5px_rgba(0,0,0,0.25)]" />
@@ -294,6 +317,22 @@ export default function StudioScreen({
       onCustomColor={onCustomColor}
       onAddPrint={() => setShowAddPrint(true)}
       onRemovePrint={removePrint}
+      onCamera={() => setFabricCam(true)}
+    />
+  );
+  const cameraPanel = fabricCam && (
+    <FabricCameraPanel
+      onFrame={onCameraFrame}
+      onClose={() => setFabricCam(false)}
+      onKeepPrint={(tile) => {
+        setFabricCam(false);
+        addPrint(tile, `Camera fabric ${customPatterns.filter((p) => p.name.startsWith("Camera fabric")).length + 1}`, LIVE_FABRIC_TILE_FRACTION);
+        setToast("Fabric kept in Your prints");
+      }}
+      onKeepColour={keepCameraColour}
+      scale={look.scale}
+      onScale={(v) => set({ scale: v }, false)}
+      onScaleCommit={commit}
     />
   );
   const adjust = (
@@ -415,15 +454,15 @@ export default function StudioScreen({
             <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-7 py-7">
               <div>
                 <p className="tag text-muted">Now wearing</p>
-                <h2 className="mt-1 font-display text-[1.9rem] leading-tight">{current.name}</h2>
+                <h2 className="mt-1 font-display text-[1.9rem] leading-tight">{wearingName}</h2>
               </div>
-              {picker}
+              {cameraPanel || picker}
               <div className="border-t border-line pt-5">{adjust}</div>
               {privacy}
             </div>
           ) : (
             <>
-              <div className="flex items-center justify-between px-4 pt-3">
+              <div className={cx("flex items-center justify-between px-4 pt-3", fabricCam && "hidden")}>
                 <Segmented<"patterns" | "adjust">
                   label="Studio panel"
                   size="sm"
@@ -434,10 +473,12 @@ export default function StudioScreen({
                     { value: "adjust", label: "Adjust" },
                   ]}
                 />
-                <p className="truncate pl-3 font-display text-[1.05rem] italic">{current.name}</p>
+                <p className="truncate pl-3 font-display text-[1.05rem] italic">{wearingName}</p>
               </div>
-              <div className="h-[244px] overflow-y-auto px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3">
-                {panel === "patterns" ? (
+              <div className={cx("overflow-y-auto px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3", !fabricCam && "h-[244px]")}>
+                {fabricCam ? (
+                  cameraPanel
+                ) : panel === "patterns" ? (
                   picker
                 ) : (
                   <div className="space-y-4">

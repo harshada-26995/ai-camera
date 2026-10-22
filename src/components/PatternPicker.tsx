@@ -2,7 +2,7 @@
 
 import { memo, useEffect, useRef } from "react";
 import { CATEGORIES, CUSTOM_COLOR_ID, drawSwatch, type PatternCategory, type PatternDef } from "@/lib/patterns";
-import { IconPlus } from "./icons";
+import { IconCamera, IconPlus } from "./icons";
 import { cx } from "./ui";
 
 const Swatch = memo(function Swatch({ def }: { def: PatternDef }) {
@@ -61,6 +61,7 @@ export default function PatternPicker({
   onCustomColor,
   onAddPrint,
   onRemovePrint,
+  onCamera,
 }: {
   patterns: PatternDef[];
   customPatterns: PatternDef[];
@@ -72,6 +73,8 @@ export default function PatternPicker({
   onCustomColor: (hex: string, commit: boolean) => void;
   onAddPrint: () => void;
   onRemovePrint: (id: string) => void;
+  /** Opens the live "fabric from camera" view, when available. */
+  onCamera?: () => void;
 }) {
   const list = category === "custom" ? customPatterns : patterns.filter((p) => p.category === category);
   const colorInput = useRef<HTMLInputElement>(null);
@@ -88,6 +91,15 @@ export default function PatternPicker({
   return (
     <div className="flex flex-col">
       <div className="no-scrollbar -mx-4 flex gap-1.5 overflow-x-auto px-4 pb-3 md:mx-0 md:flex-wrap md:px-0" role="tablist" aria-label="Pattern categories">
+        {onCamera && (
+          <button
+            type="button"
+            onClick={onCamera}
+            className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full bg-ink px-3.5 text-[0.78rem] font-medium text-paper transition-colors hover:bg-ink-soft"
+          >
+            <IconCamera size={15} /> Camera
+          </button>
+        )}
         {CATEGORIES.map((c) => (
           <button
             key={c.id}

@@ -372,6 +372,22 @@ export class TryOnRenderer {
     }
   }
 
+  /** Makes a pattern current and re-uploads its pixels (for tiles that change every frame, e.g. a camera feed). */
+  updatePattern(source: PatternSource): void {
+    const gl = this.gl;
+    this.currentPattern = source;
+    let tex = this.patternCache.get(source.key);
+    if (tex) {
+      gl.activeTexture(gl.TEXTURE3);
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+    } else {
+      tex = this.makeTexture(3, gl.LINEAR_MIPMAP_LINEAR, gl.REPEAT);
+      this.patternCache.set(source.key, tex);
+    }
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source.canvas);
+    gl.generateMipmap(gl.TEXTURE_2D);
+  }
+
   forgetPattern(key: string): void {
     const tex = this.patternCache.get(key);
     if (tex) this.gl.deleteTexture(tex);

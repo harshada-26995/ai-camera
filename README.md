@@ -69,6 +69,13 @@ readback) for automated testing.
    (sharp edges, touch-up, save). The camera needs HTTPS (or localhost). Add
    `?debug=1` to see the measured detector speed on screen.
 
+6. **Fabric from camera** (`src/lib/fabricCamera.ts`) — in the studio, tap
+   **Camera** and point the phone at any cloth: his photo shows him wearing it
+   live. *Print* mode tiles the centre square of the camera view (lighting
+   evened out, mirrored for a seamless repeat); *Colour* mode uses the cloth's
+   average colour. **Keep** saves it to Your prints / Any colour. No detection
+   runs per frame here, so it is a cheap texture update.
+
 Patterns (`src/lib/patterns.ts`) are drawn procedurally into seamless 512 px
 tiles: 8 solids + any colour, stripes, checks & plaid, geometric, floral,
 festive (paisley, bandhani, block print, mandala, ikat, zari) and small motifs.
