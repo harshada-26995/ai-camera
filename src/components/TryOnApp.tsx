@@ -8,17 +8,20 @@ import type { PatternDef } from "@/lib/patterns";
 import { detectShirt, preloadModels } from "@/lib/segmentation";
 import { clearSession, loadSession, saveSession, type SavedSession } from "@/lib/storage";
 import CropScreen from "./CropScreen";
+import LiveScreen from "./LiveScreen";
 import MaskScreen, { type DetectState } from "./MaskScreen";
 import StudioScreen from "./StudioScreen";
 import UploadScreen, { type SavedPreview } from "./UploadScreen";
 
-type Step = "upload" | "crop" | "mask" | "studio";
+type Step = "upload" | "live" | "crop" | "mask" | "studio";
 
 /** Below this share of the frame we treat detection as "no shirt found". */
 const MIN_SHIRT_COVERAGE = 0.004;
 
 export default function TryOnApp() {
   const [step, setStep] = useState<Step>("upload");
+  /** Where the current photo came from, so "Back" from the mask step returns there. */
+  const [origin, setOrigin] = useState<"upload" | "live">("upload");
   const [source, setSource] = useState<LoadedImage | null>(null);
   const [crop, setCrop] = useState<CropState>(DEFAULT_CROP);
   const [photo, setPhoto] = useState<Photo | null>(null);
@@ -80,6 +83,7 @@ export default function TryOnApp() {
     try {
       const loaded = await loadImageFile(file);
       setSource(loaded);
+      setOrigin("upload");
       setCrop(DEFAULT_CROP);
       setStep("crop");
       preloadModels();
@@ -103,6 +107,24 @@ export default function TryOnApp() {
       void runDetection(next);
     } catch (e) {
       setError(e instanceof ImageLoadError ? e.message : "This photo couldn't be processed on this device.");
+      setStep("upload");
+    }
+  };
+
+  const onLiveCapture = (frame: HTMLCanvasElement, liveLook: LookSettings) => {
+    try {
+      const next = photoFromCanvas(frame);
+      setLook(liveLook);
+      setSource(null);
+      setOrigin("live");
+      setPhoto(next);
+      photoBlob.current = null;
+      setAutoMask(null);
+      setMask(null);
+      setStep("mask");
+      void runDetection(next);
+    } catch {
+      setError("This frame couldn't be processed on this device.");
       setStep("upload");
     }
   };
@@ -170,6 +192,17 @@ export default function TryOnApp() {
     }
   };
 
+  if (step === "live") {
+    return (
+      <LiveScreen
+        initialLook={look}
+        customPatterns={customPatterns}
+        onCustomPatterns={setCustomPatterns}
+        onClose={() => setStep(photo && mask ? "studio" : "upload")}
+        onCapture={onLiveCapture}
+      />
+    );
+  }
   if (step === "crop" && source) {
     return <CropScreen image={source} initial={crop} onBack={() => setStep("upload")} onDone={onCropDone} />;
   }
@@ -181,7 +214,7 @@ export default function TryOnApp() {
         initialMask={mask}
         detect={detect}
         onRedetect={() => void runDetection(photo)}
-        onBack={() => (source ? setStep("crop") : resetAll())}
+        onBack={() => (source ? setStep("crop") : origin === "live" ? setStep("live") : resetAll())}
         onDone={(m) => {
           setMask(m);
           setStep("studio");
@@ -208,6 +241,11 @@ export default function TryOnApp() {
   return (
     <UploadScreen
       onFile={onFile}
+      onLive={() => {
+        setError(null);
+        preloadModels();
+        setStep("live");
+      }}
       busy={busy}
       error={error}
       saved={saved?.preview ?? null}

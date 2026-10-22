@@ -45,6 +45,7 @@ uniform float uSaturation;
 uniform float uHue;
 uniform float uOriginal;
 uniform float uSplit;
+uniform float uMaskSharpen;
 
 vec3 toLinear(vec3 c) { return pow(max(c, vec3(0.0)), vec3(2.2)); }
 vec3 toSrgb(vec3 c) { return pow(clamp(c, 0.0, 1.0), vec3(1.0 / 2.2)); }
@@ -65,6 +66,8 @@ void main() {
   vec2 texel = 1.0 / uSize;
   vec3 photo = texture2D(uPhoto, vUv).rgb;
   float m = texture2D(uMask, vUv).r;
+  // Live masks are low-res and bilinearly upsampled; tighten their edge.
+  if (uMaskSharpen > 0.5) m = smoothstep(0.25, 0.75, m);
 
   // Fine luminance (light 5-tap blur suppresses sensor noise).
   float lf = lum(toLinear(photo)) * 0.4;
@@ -135,6 +138,8 @@ export class TryOnRenderer {
   private photoData: ImageData | null = null;
   private maskData: Uint8Array | null = null;
   private lost = false;
+  /** Live camera mode: video frames + low-res masks, filtered linearly. */
+  private live = false;
   private onLost = (e: Event) => {
     e.preventDefault();
     this.lost = true;
@@ -142,6 +147,8 @@ export class TryOnRenderer {
   private onRestored = () => {
     this.lost = false;
     this.patternCache.clear();
+    // Handles from the lost context are dead; live mode re-creates them on the next frame.
+    this.photoTex = this.maskTex = this.coarseTex = null;
     this.init();
     if (this.photoData) this.setPhoto(this.photoData);
     if (this.maskData) this.setMask(this.maskData);
@@ -291,6 +298,58 @@ export class TryOnRenderer {
     this.shirtCenter = b ? [b.x + b.w / 2, b.y + b.h / 2] : [this.width / 2, this.height / 2];
   }
 
+  /**
+   * Live mode: uploads the current camera frame. The texture is reused across
+   * frames and only reallocated when the frame size changes.
+   */
+  setVideoFrame(source: TexImageSource, width: number, height: number): void {
+    const gl = this.gl;
+    this.live = true;
+    if (width !== this.width || height !== this.height || !this.photoTex) {
+      this.width = width;
+      this.height = height;
+      this.canvas.width = width;
+      this.canvas.height = height;
+      gl.viewport(0, 0, width, height);
+      if (this.photoTex) gl.deleteTexture(this.photoTex);
+      this.photoTex = this.makeTexture(0, gl.LINEAR, gl.CLAMP_TO_EDGE);
+    } else {
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, this.photoTex);
+    }
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+  }
+
+  /**
+   * Live mode: uploads a low-res shirt mask and shading reference computed on
+   * the CPU from a downscaled frame. Geometry is in frame pixels.
+   */
+  setLiveMask(
+    mask: Uint8Array,
+    mw: number,
+    mh: number,
+    coarse: Uint8Array,
+    cw: number,
+    ch: number,
+    meanLum: number,
+    shirtCenter: [number, number],
+    shirtWidth: number,
+  ): void {
+    const gl = this.gl;
+    const upload = (tex: WebGLTexture | null, unit: number, data: Uint8Array, w: number, h: number) => {
+      const t = tex ?? this.makeTexture(unit, gl.LINEAR, gl.CLAMP_TO_EDGE);
+      gl.activeTexture(gl.TEXTURE0 + unit);
+      gl.bindTexture(gl.TEXTURE_2D, t);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, w, h, 0, gl.LUMINANCE, gl.UNSIGNED_BYTE, data);
+      return t;
+    };
+    this.maskTex = upload(this.maskTex, 1, mask, mw, mh);
+    this.coarseTex = upload(this.coarseTex, 2, coarse, cw, ch);
+    this.meanLum = meanLum;
+    this.shirtCenter = shirtCenter;
+    this.shirtWidth = Math.max(shirtWidth, this.width * 0.1);
+  }
+
   /** Makes a pattern current, uploading it only the first time (LRU cache). */
   setPattern(source: PatternSource): void {
     const gl = this.gl;
@@ -360,6 +419,7 @@ export class TryOnRenderer {
     gl.uniform1f(this.u("uHue"), (look.hue * Math.PI) / 180);
     gl.uniform1f(this.u("uOriginal"), options.showOriginal ? 1 : 0);
     gl.uniform1f(this.u("uSplit"), options.split ?? -1);
+    gl.uniform1f(this.u("uMaskSharpen"), this.live ? 1 : 0);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
 

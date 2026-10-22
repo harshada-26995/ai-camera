@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { IconLock, IconTrash, IconUpload } from "./icons";
+import { IconCamera, IconLock, IconTrash, IconUpload } from "./icons";
 import { Button, Spinner, TopBar, cx } from "./ui";
 import { ACCEPTED_TYPES } from "@/lib/image";
 
@@ -12,6 +12,7 @@ export interface SavedPreview {
 
 export default function UploadScreen({
   onFile,
+  onLive,
   busy,
   error,
   saved,
@@ -19,6 +20,7 @@ export default function UploadScreen({
   onForget,
 }: {
   onFile: (file: File) => void;
+  onLive: () => void;
   busy: boolean;
   error: string | null;
   saved: SavedPreview | null;
@@ -97,7 +99,7 @@ export default function UploadScreen({
               if (!busy) pick(e.dataTransfer.files);
             }}
             className={cx(
-              "group relative flex aspect-[4/5] max-h-[62dvh] w-full cursor-pointer flex-col items-center justify-center overflow-hidden rounded-[28px] border bg-paper text-center transition-[border-color,transform] duration-300 sm:aspect-[5/5]",
+              "group relative flex aspect-[4/5] max-h-[46dvh] md:max-h-[62dvh] w-full cursor-pointer flex-col items-center justify-center overflow-hidden rounded-[28px] border bg-paper text-center transition-[border-color,transform] duration-300 sm:aspect-[5/5]",
               dragging ? "scale-[0.99] border-ink" : "border-line hover:border-line-strong",
             )}
           >
@@ -140,6 +142,26 @@ export default function UploadScreen({
             />
           </div>
 
+          <button
+            type="button"
+            onClick={onLive}
+            disabled={busy}
+            className="group order-first flex items-center gap-4 rounded-[22px] border border-line bg-paper p-4 text-left transition-colors hover:border-ink disabled:opacity-40 md:order-none"
+          >
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-ink text-paper">
+              <IconCamera size={22} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[0.9375rem] font-medium">Try live with the camera</span>
+              <span className="block text-[0.8125rem] leading-snug text-muted">
+                Point your phone at him and switch shirts on the live video, like a filter.
+              </span>
+            </span>
+            <span className="text-xl text-muted transition-transform group-hover:translate-x-0.5" aria-hidden="true">
+              →
+            </span>
+          </button>
+
           {error && (
             <p role="alert" className="rounded-2xl border border-danger/30 bg-danger/5 px-4 py-3 text-[0.875rem] text-danger">
               {error}
@@ -171,8 +193,8 @@ export default function UploadScreen({
 
           <p className="flex items-start gap-2 text-[0.8125rem] leading-relaxed text-muted">
             <IconLock size={16} className="mt-0.5 shrink-0" />
-            Your photo never leaves this device. Shirt detection runs inside your browser; nothing is uploaded and no
-            account is needed.
+            Your photo and camera never leave this device. Shirt detection runs inside your browser; nothing is recorded or
+            uploaded, and no account is needed.
           </p>
         </section>
       </main>

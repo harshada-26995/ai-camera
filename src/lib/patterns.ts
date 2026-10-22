@@ -997,6 +997,12 @@ export function customColorPattern(color: string): PatternDef {
   return { id: CUSTOM_COLOR_ID, name: "Custom colour", category: "solids", tileFraction: 0.5, base: color, draw: (ctx, S) => fill(ctx, S, color) };
 }
 
+/** Looks up a pattern by id across built-ins, the custom colour and uploaded prints. */
+export function resolvePattern(id: string, customColor: string, customPatterns: PatternDef[]): PatternDef {
+  if (id === CUSTOM_COLOR_ID) return customColorPattern(customColor);
+  return PATTERNS.find((p) => p.id === id) ?? customPatterns.find((p) => p.id === id) ?? PATTERNS[0]!;
+}
+
 const tileCache = new Map<string, HTMLCanvasElement>();
 
 /** Returns the full-size tile for a pattern, generating it on first use. */

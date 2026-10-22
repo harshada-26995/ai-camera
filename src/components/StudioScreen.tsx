@@ -4,7 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState }
 import { createHistory, historyReducer, type History, type HistoryAction } from "@/lib/history";
 import { canvasToBlob, type Photo } from "@/lib/image";
 import { resetAdjustments, sameLook, type LookSettings } from "@/lib/look";
-import { CUSTOM_COLOR_ID, PATTERNS, customColorPattern, getTile, tileKey, warmTiles, type PatternCategory, type PatternDef } from "@/lib/patterns";
+import { CUSTOM_COLOR_ID, PATTERNS, getTile, resolvePattern, tileKey, warmTiles, type PatternCategory, type PatternDef } from "@/lib/patterns";
 import { TryOnRenderer, WebGLUnavailableError } from "@/lib/renderer";
 import AdjustPanel from "./AdjustPanel";
 import CustomPrintDialog from "./CustomPrintDialog";
@@ -66,14 +66,7 @@ export default function StudioScreen({
   const lastSwitchMs = useRef<number | null>(null);
   const drag = useRef<{ x: number; y: number } | null>(null);
 
-  const resolve = useCallback(
-    (id: string): PatternDef => {
-      if (id === CUSTOM_COLOR_ID) return customColorPattern(look.customColor);
-      return PATTERNS.find((p) => p.id === id) ?? customPatterns.find((p) => p.id === id) ?? PATTERNS[0]!;
-    },
-    [look.customColor, customPatterns],
-  );
-  const current = resolve(look.patternId);
+  const current = resolvePattern(look.patternId, look.customColor, customPatterns);
   const [category, setCategory] = useState<PatternCategory>(current.category);
 
   const draw = useCallback(() => {

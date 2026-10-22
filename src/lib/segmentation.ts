@@ -66,7 +66,7 @@ async function withModelFallback<T>(create: (path: string) => Promise<T>, model:
   }
 }
 
-function getSegmenter(): Promise<ImageSegmenter> {
+export function getSegmenter(): Promise<ImageSegmenter> {
   segmenterPromise ??= (async () => {
     const { vision, fileset } = await loadVision();
     return withModelFallback(
@@ -86,7 +86,7 @@ function getSegmenter(): Promise<ImageSegmenter> {
   return segmenterPromise;
 }
 
-function getPose(): Promise<PoseLandmarker | null> {
+export function getPose(): Promise<PoseLandmarker | null> {
   posePromise ??= (async () => {
     try {
       const { vision, fileset } = await loadVision();
@@ -110,6 +110,60 @@ function getPose(): Promise<PoseLandmarker | null> {
   return posePromise;
 }
 
+let liveSegmenterPromise: Promise<ImageSegmenter> | null = null;
+let livePosePromise: Promise<PoseLandmarker | null> | null = null;
+
+/**
+ * GPU-delegated instances for the live camera loop, where the CPU path is too
+ * slow for real time. Falls back to the CPU instances if the GPU path fails.
+ */
+export function getLiveSegmenter(): Promise<ImageSegmenter> {
+  liveSegmenterPromise ??= (async () => {
+    try {
+      const { vision, fileset } = await loadVision();
+      return await withModelFallback(
+        (modelAssetPath) =>
+          vision.ImageSegmenter.createFromOptions(fileset, {
+            baseOptions: { modelAssetPath, delegate: "GPU" },
+            runningMode: "IMAGE",
+            outputCategoryMask: false,
+            outputConfidenceMasks: true,
+          }),
+        SEGMENTER_MODEL,
+      );
+    } catch {
+      return getSegmenter();
+    }
+  })();
+  liveSegmenterPromise.catch(() => {
+    liveSegmenterPromise = null;
+  });
+  return liveSegmenterPromise;
+}
+
+export function getLivePose(): Promise<PoseLandmarker | null> {
+  livePosePromise ??= (async () => {
+    try {
+      const { vision, fileset } = await loadVision();
+      return await withModelFallback(
+        (modelAssetPath) =>
+          vision.PoseLandmarker.createFromOptions(fileset, {
+            baseOptions: { modelAssetPath, delegate: "GPU" },
+            runningMode: "IMAGE",
+            numPoses: 1,
+          }),
+        POSE_MODEL,
+      );
+    } catch {
+      return getPose();
+    }
+  })();
+  void livePosePromise.then((p) => {
+    if (!p) livePosePromise = null;
+  });
+  return livePosePromise;
+}
+
 /** Starts downloading the models early (e.g. while the user is cropping). */
 export function preloadModels(): void {
   void getSegmenter().catch(() => undefined);
@@ -118,12 +172,12 @@ export function preloadModels(): void {
 
 const nextFrame = () => new Promise<void>((r) => setTimeout(r, 0));
 
-function smoothstep(e0: number, e1: number, x: number): number {
+export function smoothstep(e0: number, e1: number, x: number): number {
   const t = Math.min(Math.max((x - e0) / (e1 - e0), 0), 1);
   return t * t * (3 - 2 * t);
 }
 
-interface Landmarks {
+export interface Landmarks {
   shoulderY: number;
   hipY: number;
   hipLeftX: number;
@@ -132,7 +186,7 @@ interface Landmarks {
   shoulderRightX: number;
 }
 
-function readLandmarks(lm: NormalizedLandmark[] | undefined, w: number, h: number): Landmarks | null {
+export function readLandmarks(lm: NormalizedLandmark[] | undefined, w: number, h: number): Landmarks | null {
   if (!lm) return null;
   const ls = lm[11];
   const rs = lm[12];
@@ -159,7 +213,7 @@ function readLandmarks(lm: NormalizedLandmark[] | undefined, w: number, h: numbe
  * and colour to decide where the shirt ends. Returns false when no separation
  * was needed or possible.
  */
-function separateTrousers(prob: Float32Array, lab: Float32Array, w: number, h: number, lm: Landmarks): boolean {
+export function separateTrousers(prob: Float32Array, lab: Float32Array, w: number, h: number, lm: Landmarks): boolean {
   const torso = lm.hipY - lm.shoulderY;
   const bandTop = lm.hipY - 0.2 * torso;
   const bandBottom = lm.hipY + 0.5 * torso;
@@ -215,6 +269,41 @@ function separateTrousers(prob: Float32Array, lab: Float32Array, w: number, h: n
   return true;
 }
 
+export interface LowResSegmentation {
+  /** Probability of "clothes" per pixel (0..1). */
+  clothes: Float32Array;
+  /** Max probability of face, hair or body skin per pixel (0..1). */
+  protect: Float32Array;
+}
+
+/** Runs the segmenter on a small canvas and returns its clothes and protection maps at that size. */
+export function segmentLowRes(segmenter: ImageSegmenter, canvas: HTMLCanvasElement, lw: number, lh: number): LowResSegmentation {
+  const result = segmenter.segment(canvas);
+  try {
+    const labels = segmenter.getLabels().map((l) => l.toLowerCase());
+    const indexOf = (name: string, fallback: number) => {
+      const i = labels.findIndex((l) => l.includes(name));
+      return i >= 0 ? i : fallback;
+    };
+    const masks = result.confidenceMasks ?? [];
+    const readMask = (i: number): Float32Array | null => {
+      const m = masks[i];
+      if (!m) return null;
+      return resizeFloat(m.getAsFloat32Array(), m.width, m.height, lw, lh);
+    };
+    const clothes = readMask(indexOf("clothes", 4));
+    if (!clothes) throw new Error("Segmentation returned no clothes mask");
+    const protect = new Float32Array(lw * lh);
+    for (const src of [readMask(indexOf("face", 3)), readMask(indexOf("hair", 1)), readMask(indexOf("body", 2))]) {
+      if (!src) continue;
+      for (let i = 0; i < protect.length; i++) if (src[i] > protect[i]) protect[i] = src[i];
+    }
+    return { clothes, protect };
+  } finally {
+    result.close();
+  }
+}
+
 export async function detectShirt(photo: HTMLCanvasElement, onStage?: (s: DetectStage) => void): Promise<DetectionResult> {
   const W = photo.width;
   const H = photo.height;
@@ -235,22 +324,7 @@ export async function detectShirt(photo: HTMLCanvasElement, onStage?: (s: Detect
 
   onStage?.("detecting");
   await nextFrame();
-  const result = segmenter.segment(low);
-  const labels = segmenter.getLabels().map((l) => l.toLowerCase());
-  const indexOf = (name: string, fallback: number) => {
-    const i = labels.findIndex((l) => l.includes(name));
-    return i >= 0 ? i : fallback;
-  };
-  const masks = result.confidenceMasks ?? [];
-  const readMask = (i: number): Float32Array | null => {
-    const m = masks[i];
-    if (!m) return null;
-    return resizeFloat(m.getAsFloat32Array(), m.width, m.height, lw, lh);
-  };
-  const clothes = readMask(indexOf("clothes", 4));
-  const protectSources = [readMask(indexOf("face", 3)), readMask(indexOf("hair", 1)), readMask(indexOf("body", 2))];
-  result.close();
-  if (!clothes) throw new Error("Segmentation returned no clothes mask");
+  const { clothes, protect: protectLow } = segmentLowRes(segmenter, low, lw, lh);
 
   let landmarks: Landmarks | null = null;
   if (pose) {
@@ -300,11 +374,6 @@ export async function detectShirt(photo: HTMLCanvasElement, onStage?: (s: Detect
   const refined = applyGuidedUpsampleColor(coeffs, full, W, H);
 
   // Protection map: anything that is clearly face, hair or skin stays untouched.
-  const protectLow = new Float32Array(n);
-  for (const src of protectSources) {
-    if (!src) continue;
-    for (let i = 0; i < n; i++) if (src[i] > protectLow[i]) protectLow[i] = src[i];
-  }
   const protect = resizeFloat(protectLow, lw, lh, W, H);
   const coarse = resizeFloat(clothes, lw, lh, W, H);
 

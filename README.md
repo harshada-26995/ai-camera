@@ -60,6 +60,15 @@ readback) for automated testing.
    pattern in linear light, and the pattern bends slightly along folds. Pixels
    outside the mask output the original bytes exactly.
 
+5. **Live camera** (`src/lib/live.ts`) — point the phone at him and the shirt
+   changes on the live video, like a filter. Each frame is drawn immediately
+   with the latest mask; detection (GPU-delegated MediaPipe, falling back to
+   CPU) runs after the paint on an adaptive budget so the video stays smooth on
+   slower devices. Masks are blended over time to avoid flicker. **Capture**
+   freezes a frame and sends it through the full-quality pipeline above
+   (sharp edges, touch-up, save). The camera needs HTTPS (or localhost). Add
+   `?debug=1` to see the measured detector speed on screen.
+
 Patterns (`src/lib/patterns.ts`) are drawn procedurally into seamless 512 px
 tiles: 8 solids + any colour, stripes, checks & plaid, geometric, floral,
 festive (paisley, bandhani, block print, mandala, ikat, zari) and small motifs.
@@ -68,6 +77,9 @@ mirrored seamless repeat).
 
 ## Privacy
 
+- The photo and camera feed are processed only in the browser; camera frames
+  are never recorded or uploaded, and the camera is switched off when you
+  leave the live view.
 - The photo is processed only in the browser. Only the model files are
   downloaded (served from this app's own `/public`; if they are missing the app
   falls back to Google's public model URLs — still no photo is sent).
@@ -102,3 +114,7 @@ tests/                   Vitest unit tests
 - The new pattern bends gently with large folds but is not a 3D cloth
   simulation; sleeves keep the same pattern direction as the body.
 - Custom prints are cropped to a centred square tile.
+- Live mode edges are softer than the captured photo's, and the mask trails
+  fast movement slightly. Live speed depends on the phone's GPU: on the 2017
+  Intel laptop GPU used for testing, one detection update took ~150 ms;
+  modern iPhones are expected to be faster but this has not been measured.
