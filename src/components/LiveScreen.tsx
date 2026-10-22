@@ -11,7 +11,13 @@ import { useMediaQuery } from "./useMediaQuery";
 import { IconClose, IconFlip } from "./icons";
 import { Button, IconButton, Spinner, TopBar, cx } from "./ui";
 
-const toSource = (def: PatternDef): PatternSource => ({ key: tileKey(def), canvas: getTile(def), tileFraction: def.tileFraction, cover: def.cover });
+const toSource = (def: PatternDef): PatternSource => ({
+  key: tileKey(def),
+  canvas: getTile(def),
+  tileFraction: def.tileFraction,
+  cover: def.cover,
+  adjust: def.adjust,
+});
 
 const STATUS_TEXT: Partial<Record<LiveStatus["kind"], string>> = {
   starting: "Opening the camera…",

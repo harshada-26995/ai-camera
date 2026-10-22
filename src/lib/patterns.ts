@@ -30,6 +30,8 @@ export interface PatternDef {
   canvas?: HTMLCanvasElement;
   /** Shown once across the whole shirt rather than tiled (fabric captured with the camera). */
   cover?: boolean;
+  /** Colour correction chosen when the fabric was captured. */
+  adjust?: { brightness: number; saturation: number };
 }
 
 export const TILE = 512;

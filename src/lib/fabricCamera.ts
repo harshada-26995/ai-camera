@@ -10,6 +10,32 @@ export type FabricMode = "print" | "colour";
 /** Shared key so the renderer re-uses one GPU texture for the live fabric. */
 export const LIVE_FABRIC_KEY = "live-fabric";
 
+/**
+ * Phone cameras auto-expose a frame-filling cloth towards mid-grey (dark cloth
+ * comes out lighter) and video colours are flatter than in person, so camera
+ * fabric starts slightly darker and richer. The user fine-tunes it live.
+ */
+export const DEFAULT_CAMERA_ADJUST = { brightness: -0.4, saturation: 1.25 };
+
+/** Applies the renderer's pattern colour correction to a hex colour (same maths as the shader). */
+export function adjustHex(hex: string, brightness: number, saturation: number): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex);
+  if (!m) return hex;
+  const n = parseInt(m[1], 16);
+  const r = ((n >> 16) & 255) / 255;
+  const g = ((n >> 8) & 255) / 255;
+  const b = (n & 255) / 255;
+  const y = 0.299 * r + 0.587 * g + 0.114 * b;
+  const i = (0.596 * r - 0.274 * g - 0.322 * b) * saturation;
+  const q = (0.211 * r - 0.523 * g + 0.312 * b) * saturation;
+  const k = Math.pow(2, brightness);
+  const out = [y + 0.956 * i + 0.621 * q, y - 0.272 * i - 0.647 * q, y - 1.106 * i + 1.703 * q].map((c) => {
+    const lin = Math.pow(Math.min(Math.max(c, 0), 1), 2.2) * k;
+    return Math.round(Math.pow(Math.min(Math.max(lin, 0), 1), 1 / 2.2) * 255);
+  });
+  return `#${out.map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+}
+
 /** Power of two so WebGL can mipmap it; high enough to stay sharp on a 1600 px photo. */
 const SIZE = 1024;
 

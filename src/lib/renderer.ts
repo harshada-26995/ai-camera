@@ -96,7 +96,7 @@ void main() {
   float shade = mix(1.0, s, uShading);
   vec3 lit = lin * shade;
   // Highlights pick up a faint sheen like real cloth.
-  lit += max(s - 1.0, 0.0) * uShading * 0.12 * (1.0 - lin);
+  lit += max(s - 1.0, 0.0) * uShading * 0.04 * (1.0 - lin);
   vec3 dressed = mix(photo, toSrgb(lit), m * uIntensity);
 
   bool original = uOriginal > 0.5 || (uSplit >= 0.0 && vUv.x < uSplit) || m <= 0.0;
@@ -119,6 +119,15 @@ export interface PatternSource {
    * scale 1), instead of tiling it. Used for fabric photographed with the camera.
    */
   cover?: boolean;
+  /** Per-pattern colour correction on top of the look (e.g. for camera captures). */
+  adjust?: PatternAdjust;
+}
+
+export interface PatternAdjust {
+  /** Exposure stops added to the look's brightness. */
+  brightness: number;
+  /** Multiplier on the look's saturation. */
+  saturation: number;
 }
 
 const TEXTURE_CACHE_LIMIT = 12;
@@ -447,8 +456,8 @@ export class TryOnRenderer {
     gl.uniform1f(this.u("uShading"), look.shading);
     gl.uniform1f(this.u("uDetail"), look.detail);
     gl.uniform1f(this.u("uWarp"), look.warp * this.shirtWidth * 0.25);
-    gl.uniform1f(this.u("uExposure"), Math.pow(2, look.brightness));
-    gl.uniform1f(this.u("uSaturation"), look.saturation);
+    gl.uniform1f(this.u("uExposure"), Math.pow(2, look.brightness + (pattern.adjust?.brightness ?? 0)));
+    gl.uniform1f(this.u("uSaturation"), look.saturation * (pattern.adjust?.saturation ?? 1));
     gl.uniform1f(this.u("uHue"), (look.hue * Math.PI) / 180);
     gl.uniform1f(this.u("uOriginal"), options.showOriginal ? 1 : 0);
     gl.uniform1f(this.u("uSplit"), options.split ?? -1);

@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { FabricScanner, type FabricMode } from "@/lib/fabricCamera";
+import { DEFAULT_CAMERA_ADJUST, FabricScanner, adjustHex, type FabricMode } from "@/lib/fabricCamera";
+import type { PatternAdjust } from "@/lib/renderer";
 import { CameraError, listBackLenses, openCamera, stopStream, type Lens } from "@/lib/live";
 import { IconClose } from "./icons";
 import { Button, Segmented, Slider, Spinner, cx } from "./ui";
@@ -35,8 +36,11 @@ export default function FabricCameraPanel({
   onKeepPrint,
   onKeepColour,
   onClose,
+  onAdjust,
   compact = false,
 }: {
+  /** Live colour correction for the camera fabric (brightness/colour strength). */
+  onAdjust: (adjust: PatternAdjust) => void;
   /**
    * Phone layout: the camera view floats as a small thumbnail over the page and
    * the controls fit in a slim bar, so the photo of him stays fully visible.
@@ -44,7 +48,7 @@ export default function FabricCameraPanel({
   compact?: boolean;
   /** Receives the live image every frame, and null when the camera closes. */
   onFrame: (tile: HTMLCanvasElement | null) => void;
-  onKeepPrint: (tile: HTMLCanvasElement) => void;
+  onKeepPrint: (tile: HTMLCanvasElement, adjust: PatternAdjust) => void;
   onKeepColour: (hex: string) => void;
   onClose: () => void;
 }) {
@@ -52,6 +56,7 @@ export default function FabricCameraPanel({
   const scannerRef = useRef<FabricScanner | null>(null);
   const [mode, setMode] = useState<FabricMode>("print");
   const [zoom, setZoom] = useState(1);
+  const [adjust, setAdjust] = useState<PatternAdjust>(DEFAULT_CAMERA_ADJUST);
   const [state, setState] = useState<"starting" | "live" | { error: string }>("starting");
   const [swatch, setSwatch] = useState("#808080");
   const [lenses, setLenses] = useState<Lens[]>([]);
@@ -63,6 +68,10 @@ export default function FabricCameraPanel({
   useEffect(() => {
     live.current = { mode, zoom, onFrame };
   }, [mode, zoom, onFrame]);
+
+  useEffect(() => {
+    onAdjust(adjust);
+  }, [adjust, onAdjust]);
 
   // Camera lifetime; restarts when a different lens is chosen.
   useEffect(() => {
@@ -134,8 +143,8 @@ export default function FabricCameraPanel({
   const keep = () => {
     const s = scannerRef.current;
     if (!s) return;
-    if (mode === "colour") onKeepColour(s.colour);
-    else onKeepPrint(s.snapshot());
+    if (mode === "colour") onKeepColour(adjustHex(s.colour, adjust.brightness, adjust.saturation));
+    else onKeepPrint(s.snapshot(), adjust);
   };
 
   const error = typeof state === "object" ? state.error : null;
@@ -183,9 +192,33 @@ export default function FabricCameraPanel({
 
   const zoomSlider = <Slider label="Zoom" value={zoom} min={1} max={4} format={(v) => `${v.toFixed(1)}×`} onChange={setZoom} />;
 
+  // Phone cameras brighten dark cloth and flatten colours; these bring it back to how it looks in person.
+  const colourSliders = (
+    <div className="grid grid-cols-2 gap-3">
+      <Slider
+        label="Brightness"
+        value={adjust.brightness}
+        min={-1.5}
+        max={1}
+        format={(v) => (Math.abs(v) < 0.05 ? "0" : v < 0 ? `${Math.round(-v * 100)}% darker` : `${Math.round(v * 100)}% lighter`)}
+        onChange={(v) => setAdjust((a) => ({ ...a, brightness: v }))}
+      />
+      <Slider
+        label="Colour"
+        value={adjust.saturation}
+        min={0.5}
+        max={2}
+        format={(v) => `${Math.round(v * 100)}%`}
+        onChange={(v) => setAdjust((a) => ({ ...a, saturation: v }))}
+      />
+    </div>
+  );
+
   const keepButton = (
     <Button className="h-11 flex-1" disabled={state !== "live"} onClick={keep}>
-      {mode === "colour" && <span className="h-4 w-4 rounded-full border border-paper/60" style={{ background: swatch }} />}
+      {mode === "colour" && (
+        <span className="h-4 w-4 rounded-full border border-paper/60" style={{ background: adjustHex(swatch, adjust.brightness, adjust.saturation) }} />
+      )}
       {mode === "colour" ? "Keep this colour" : "Keep this fabric"}
     </Button>
   );
@@ -219,6 +252,7 @@ export default function FabricCameraPanel({
           <div className="shrink-0 pb-0.5">{modeSwitch}</div>
           <div className="min-w-0 flex-1">{zoomSlider}</div>
         </div>
+        {colourSliders}
         {errorText}
         <div className="flex items-center gap-2">
           {lenses.length > 1 && (
@@ -268,6 +302,7 @@ export default function FabricCameraPanel({
           {zoomSlider}
         </div>
       </div>
+      <div className="mt-2">{colourSliders}</div>
 
       {lenses.length > 1 && (
         <div className="no-scrollbar mt-2 flex items-center gap-1.5 overflow-x-auto" role="radiogroup" aria-label="Camera lens">

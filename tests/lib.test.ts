@@ -4,6 +4,7 @@ import { createHistory, historyReducer } from "@/lib/history";
 import { closeAndFeather, fillHoles, floodSelect, keepMainComponents, maskBounds, maskCoverage, stampBrush, strokeSegment } from "@/lib/mask";
 import { clampPan, coverScale, outputSize, DEFAULT_CROP } from "@/lib/crop";
 import { rgbToLab } from "@/lib/color";
+import { adjustHex } from "@/lib/fabricCamera";
 
 describe("boxFilter", () => {
   it("matches a naive clamped mean", () => {
@@ -265,5 +266,25 @@ describe("colour guided filter", () => {
     // Input changes 1/16 per pixel; across the colour edge the output jumps several times that.
     expect(q[row + 23] - q[row + 24]).toBeGreaterThan(3 / 16);
     expect(Math.abs(q[row + 21] - q[row + 22])).toBeLessThan(0.05);
+  });
+});
+
+describe("camera colour correction", () => {
+  it("is the identity at neutral settings", () => {
+    for (const hex of ["#1f2a44", "#6a1b2a", "#d6c4a3", "#ffffff", "#000000"]) {
+      const out = adjustHex(hex, 0, 1);
+      const diff = [1, 3, 5].map((i) => Math.abs(parseInt(out.slice(i, i + 2), 16) - parseInt(hex.slice(i, i + 2), 16)));
+      expect(Math.max(...diff)).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("darkens with negative brightness and enriches with more colour", () => {
+    const lum = (h: string) => [1, 3, 5].reduce((a, i) => a + parseInt(h.slice(i, i + 2), 16), 0);
+    expect(lum(adjustHex("#8a6a9a", -0.5, 1))).toBeLessThan(lum("#8a6a9a"));
+    const spread = (h: string) => {
+      const c = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+      return Math.max(...c) - Math.min(...c);
+    };
+    expect(spread(adjustHex("#8a6a9a", 0, 1.5))).toBeGreaterThan(spread("#8a6a9a"));
   });
 });

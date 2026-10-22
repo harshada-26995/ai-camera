@@ -5,7 +5,7 @@ import { createHistory, historyReducer, type History, type HistoryAction } from 
 import { canvasToBlob, type Photo } from "@/lib/image";
 import { resetAdjustments, sameLook, type LookSettings } from "@/lib/look";
 import { CUSTOM_COLOR_ID, PATTERNS, getTile, resolvePattern, tileKey, warmTiles, type PatternCategory, type PatternDef } from "@/lib/patterns";
-import { TryOnRenderer, WebGLUnavailableError } from "@/lib/renderer";
+import { TryOnRenderer, WebGLUnavailableError, type PatternAdjust } from "@/lib/renderer";
 import AdjustPanel from "./AdjustPanel";
 import CustomPrintDialog from "./CustomPrintDialog";
 import FabricCameraPanel from "./FabricCameraPanel";
@@ -62,6 +62,7 @@ export default function StudioScreen({
   const [fabricCam, setFabricCam] = useState(false);
   /** Latest tile from the camera while "Fabric from camera" is open. */
   const liveFabric = useRef<HTMLCanvasElement | null>(null);
+  const cameraAdjust = useRef<PatternAdjust | undefined>(undefined);
   const desktop = useMediaQuery("(min-width: 768px)");
 
   const hostRef = useRef<HTMLDivElement>(null);
@@ -78,9 +79,15 @@ export default function StudioScreen({
     const r = rendererRef.current;
     if (!r) return;
     if (liveFabric.current) {
-      r.updatePattern({ key: LIVE_FABRIC_KEY, canvas: liveFabric.current, tileFraction: 1, cover: true });
+      r.updatePattern({ key: LIVE_FABRIC_KEY, canvas: liveFabric.current, tileFraction: 1, cover: true, adjust: cameraAdjust.current });
     } else {
-      r.setPattern({ key: tileKey(current), canvas: getTile(current), tileFraction: current.tileFraction, cover: current.cover });
+      r.setPattern({
+        key: tileKey(current),
+        canvas: getTile(current),
+        tileFraction: current.tileFraction,
+        cover: current.cover,
+        adjust: current.adjust,
+      });
     }
     r.render(look, { showOriginal, split: compare ? split : null });
   }, [current, look, showOriginal, compare, split]);
@@ -190,6 +197,11 @@ export default function StudioScreen({
     drawRef.current();
   }, []);
 
+  const onCameraAdjust = useCallback((adjust: PatternAdjust) => {
+    cameraAdjust.current = adjust;
+    drawRef.current();
+  }, []);
+
   const keepCameraColour = (hex: string) => {
     setFabricCam(false);
     setCategory("solids");
@@ -249,8 +261,8 @@ export default function StudioScreen({
     }
   };
 
-  const addPrint = (tile: HTMLCanvasElement, name: string, cover = false) => {
-    const def: PatternDef = { id: `custom-${Date.now()}`, name, category: "custom", tileFraction: 0.35, base: "#ddd", canvas: tile, cover };
+  const addPrint = (tile: HTMLCanvasElement, name: string, cover = false, adjust?: PatternAdjust) => {
+    const def: PatternDef = { id: `custom-${Date.now()}`, name, category: "custom", tileFraction: 0.35, base: "#ddd", canvas: tile, cover, adjust };
     onCustomPatterns([...customPatterns, def]);
     setShowAddPrint(false);
     setCategory("custom");
@@ -327,9 +339,10 @@ export default function StudioScreen({
     <FabricCameraPanel
       onFrame={onCameraFrame}
       onClose={() => setFabricCam(false)}
-      onKeepPrint={(tile) => {
+      onAdjust={onCameraAdjust}
+      onKeepPrint={(tile, adjust) => {
         setFabricCam(false);
-        addPrint(tile, `Camera fabric ${customPatterns.filter((p) => p.name.startsWith("Camera fabric")).length + 1}`, true);
+        addPrint(tile, `Camera fabric ${customPatterns.filter((p) => p.name.startsWith("Camera fabric")).length + 1}`, true, adjust);
         setToast("Fabric kept in Your prints");
       }}
       onKeepColour={keepCameraColour}
